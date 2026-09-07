@@ -1,0 +1,43 @@
+# Docker Compose for Feeding Brennen - database only.
+#
+# This brings up just PostgreSQL so you don't have to install or manage Postgres
+# yourself. The server and client still run natively with `npm run dev` (that's
+# the code you'll be editing, and native gives you fast reloads, a debugger, and
+# normal logs).
+#
+# Quick start:
+#   docker compose up -d        # start Postgres in the background
+#   docker compose down         # stop it (data is kept)
+#   docker compose down -v      # stop it and delete all data (fresh start)
+#
+# The connection details below intentionally match the default DATABASE_URL
+# baked into client/db/pool.ts, so the app runs with no .env at all:
+#   postgresql://postgres:postgres@localhost:5432/feeding_brennen
+
+services:
+  db:
+    image: postgres:16
+    # No `container_name:` on purpose. Compose namespaces the container by
+    # folder name, so a second clone (or a renamed folder) doesn't collide with
+    # a container left running by the first one. Address it by service name:
+    # `docker compose logs db`, `docker compose exec db psql -U postgres`.
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: feeding_brennen
+    ports:
+      # host:container - exposes the DB on localhost:5432 for the native server.
+      - "5432:5432"
+    volumes:
+      # Named volume so your data survives `docker compose down` (but not -v).
+      - feeding_brennen_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Lets you wait for the DB to be truly ready before running migrations.
+      test: ["CMD-SHELL", "pg_isready -U postgres -d feeding_brennen"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  feeding_brennen_pgdata:
