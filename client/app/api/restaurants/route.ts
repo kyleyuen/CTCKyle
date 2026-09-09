@@ -10,7 +10,10 @@ import { toRestaurant } from '@/lib/types';
 export async function GET() {
   try {
     const { rows } = await pool.query(
-      'SELECT * FROM restaurants ORDER BY createdAt DESC'
+      // Suggestion: Columns are listed instead of SELECT * --> Columns added later will not be given by the query.
+      // Bug Fix: Original --> "ORDER BY createdAt DESC", Postgres reads createdat (lower cased) where it is not
+      // recognized by the database, hence rejecting the entire query. Changed "createdAt" to "created_at". 
+      'SELECT id, name, cuisine, address, rating, created_at AS "createdAt" FROM restaurants ORDER BY created_at DESC'
     );
     // Map every row - raw rows don't match the contract (NUMERIC comes back
     // as a string, timestamps as Date objects). See lib/types.ts.
