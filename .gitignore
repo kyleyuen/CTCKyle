@@ -17,6 +17,9 @@ build/
 *.log
 npm-debug.log*
 
+# Browser-test scratch output
+.playwright-mcp/
+
 # OS / editor
 .DS_Store
 .idea/
