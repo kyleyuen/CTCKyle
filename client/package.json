@@ -9,7 +9,12 @@
     "start": "next start -p 3000",
     "lint": "next lint",
     "migrate": "tsx db/migrate.ts",
-    "seed": "tsx db/seed.ts"
+    "seed": "tsx db/seed.ts",
+    "bench": "tsx bench/pagination.ts",
+    "test": "npm run test:unit && npm run test:db && npm run test:api",
+    "test:unit": "tsx --test test/unit.test.ts",
+    "test:db": "tsx --test test/db.test.ts",
+    "test:api": "tsx --test test/api.test.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
