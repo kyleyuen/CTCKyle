@@ -24,7 +24,41 @@ const globalForPool = globalThis as unknown as { pool?: Pool };
  *   const { rows } = await pool.query('SELECT * FROM restaurants');
  */
 export const pool =
-  globalForPool.pool ?? new Pool({ connectionString: DATABASE_URL });
+  globalForPool.pool ??
+  new Pool({
+    connectionString: DATABASE_URL,
+
+    // --- connection limits ---------------------------------------------------
+    // Postgres allows 100 connections by default and each one costs memory on
+    // the server, so the app takes a bounded slice rather than opening one per
+    // request. Requests beyond `max` wait for a free client instead of piling up
+    // new connections until the database starts refusing them.
+    max: 10,
+    // Hand idle connections back instead of holding them open forever.
+    idleTimeoutMillis: 30_000,
+    // Waiting for a client is not free: fail fast when the database is
+    // unreachable or every client is busy, so a request errors in 5s rather
+    // than hanging until the caller gives up.
+    connectionTimeoutMillis: 5_000,
+
+    // --- query limits --------------------------------------------------------
+    // Enforced by Postgres itself, so the query is cancelled and the connection
+    // released even if this process has stopped listening. Without it one slow
+    // query holds a pooled client indefinitely and, repeated, starves the pool -
+    // the failure mode is the whole API hanging, not one slow response. 10s is
+    // generous for these endpoints; a long migration or report would need its
+    // own connection with a higher limit.
+    statement_timeout: 10_000,
+    // Client-side backstop for the one case Postgres cannot cover: a connection
+    // dropped mid-query, where no answer ever arrives. Deliberately longer than
+    // statement_timeout so the server always wins the race - Postgres cancels
+    // with SQLSTATE 57014, which is a classified error, whereas this one throws
+    // a bare "Query read timeout" carrying no code at all.
+    query_timeout: 15_000,
+    // A transaction left open holds its locks and blocks other writers. Close
+    // sessions that BEGIN and then go quiet.
+    idle_in_transaction_session_timeout: 10_000,
+  });
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPool.pool = pool;
