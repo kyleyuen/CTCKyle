@@ -1,0 +1,108 @@
+name: CI
+
+# Every claim in WriteUp.md should be checkable without cloning anything, which
+# is what this is for: lint, types, migrations, unit tests, database-level
+# guarantees, a production build, and the full API contract against real
+# Postgres.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  test:
+    name: lint, typecheck, test
+    runs-on: ubuntu-latest
+
+    services:
+      # A disposable database per run. Same major version as docker-compose.yml,
+      # so CI and local development cannot disagree about what Postgres does.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: feeding_brennen
+        ports:
+          - 5432:5432
+        # Without this the job races the database and fails intermittently: the
+        # container being up is not the same as Postgres accepting queries.
+        options: >-
+          --health-cmd "pg_isready -U postgres -d feeding_brennen"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/feeding_brennen
+
+    defaults:
+      run:
+        working-directory: client
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      # `npm ci` rather than `npm install`: it installs exactly what the
+      # lockfile pins, so CI cannot pass on a dependency tree nobody has.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Run migrations
+        run: npm run migrate
+
+      # The ledger's whole promise is that a second run applies nothing. If this
+      # ever reports work to do, the ledger is broken.
+      - name: Migrations are idempotent
+        run: |
+          output=$(npm run --silent migrate)
+          echo "$output"
+          echo "$output" | grep -q "nothing to apply" \
+            || { echo "Second migrate run was not a no-op"; exit 1; }
+
+      - name: Seed sample data
+        run: npm run seed
+
+      # Fast, no server needed: validation, cursor handling, error mapping.
+      - name: Unit tests
+        run: npm run test:unit
+
+      # Constraints, the ledger, cascade behaviour, pool limits - the guarantees
+      # that hold even when a write bypasses the API entirely.
+      - name: Database tests
+        run: npm run test:db
+
+      - name: Build
+        run: npm run build
+
+      - name: Start the server
+        run: |
+          npm run start &
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/api/health > /dev/null; then
+              echo "server up after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "server did not start"; exit 1
+
+      # Readiness must reflect the database, not just the process. If this
+      # passes while Postgres is down, the probe is lying.
+      - name: Readiness reports the database
+        run: curl -sf http://localhost:3000/api/health/ready | grep -q '"database":"up"'
+
+      # The Part A contract itself, over HTTP, against the real database.
+      - name: API contract tests
+        run: npm run test:api

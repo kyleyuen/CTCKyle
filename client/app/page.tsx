@@ -1,32 +1,41 @@
 import { getRestaurants } from '@/lib/apiClient';
+import RestaurantList from './RestaurantList';
 
-// Server component. Fetches restaurants on each request and renders a plain
-// list. There is no loading state, no empty state, and no error handling: if
-// the API is down or returns something unexpected, this throws.
+/**
+ * Server component: fetches the first page on each request and hands it to the
+ * client component, which owns everything after that.
+ *
+ * Splitting it this way means the list is rendered HTML before any JavaScript
+ * loads, and only the "load more" interaction needs the browser. The first page
+ * and every later one come from the same endpoint, so there is one definition
+ * of what a page is.
+ */
 export default async function HomePage() {
-  const restaurants = await getRestaurants();
+  let page;
+  try {
+    page = await getRestaurants();
+  } catch (err) {
+    // getRestaurants now throws on a non-2xx instead of handing back an error
+    // object typed as data - which is how the A1 bug reached this component as
+    // "restaurants.map is not a function". Showing the failure beats rendering
+    // a broken list.
+    return (
+      <div>
+        <h2 className="mb-4 text-lg font-medium">Restaurants</h2>
+        <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {err instanceof Error ? err.message : 'Could not load restaurants'}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div>
       <h2 className="mb-4 text-lg font-medium">Restaurants</h2>
-      <ul className="space-y-3">
-        {restaurants.map((restaurant) => (
-          <li
-            key={restaurant.id}
-            className="rounded-lg border border-gray-200 bg-white p-4"
-          >
-            <div className="flex items-baseline justify-between">
-              <span className="font-medium">{restaurant.name}</span>
-              <span className="text-sm text-gray-500">
-                {restaurant.rating}★
-              </span>
-            </div>
-            <div className="mt-1 text-sm text-gray-600">
-              {restaurant.cuisine} · {restaurant.address}
-            </div>
-          </li>
-        ))}
-      </ul>
+      <RestaurantList
+        initialItems={page.items}
+        initialCursor={page.nextCursor}
+      />
     </div>
   );
 }
