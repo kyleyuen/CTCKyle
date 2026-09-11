@@ -20,6 +20,15 @@ but also tell the user that the migration have been applied. These issues reveal
 ## 3. Where did you cut corners?
 
 > What would you fix first with another day?
+- API limits/verifcation
+- Changes in the Unique names --> unique name + location instead of just name
+- The visit API with the same scafolding 
+
+## 4. What should we look at first? 
+- errors.ts and validation.ts 
+- `GET` in `app/api/restaurants/route.ts`
+- `db/migrate.ts`: the ledger
+- do `npm test` to run all test cases
 
 ---
 
